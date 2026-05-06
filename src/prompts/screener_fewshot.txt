@@ -1,0 +1,65 @@
+── EJEMPLO 1: INCLUSIÓN CLARA ──
+INPUT CRITERIA: 
+{"population": {"include": ["adults with type 2 diabetes"]}, "intervention": {"include": ["machine learning", "predictive model"]}, "study_design": {"include": ["RCT"]}}
+
+INPUT ABSTRACT: 
+"We conducted a randomized controlled trial of 450 adults with type 2 diabetes in Mexico to evaluate whether a machine learning model can predict HbA1c levels at 12 months."
+
+OUTPUT:
+{
+  "decision": "include",
+  "reason": null,
+  "confidence": "high",
+  "criteria_met": {
+    "population": true,
+    "intervention": true,
+    "study_design": true,
+    "temporal": true,
+    "language": true
+  },
+  "justification": "The study describes a randomized controlled trial [Source abstract] targeting adults with type 2 diabetes. The intervention evaluated is a machine learning model, satisfying all PICOS eligibility criteria."
+}
+
+── EJEMPLO 2: EXCLUSIÓN CLARA (JERARQUÍA DE ELIMINACIÓN) ──
+INPUT CRITERIA: 
+{"population": {"include": ["adults with type 2 diabetes"], "exclude": ["pediatric", "type 1 diabetes"]}, "study_design": {"exclude": ["case report"]}}
+
+INPUT ABSTRACT: 
+"We present a case report of a pediatric patient with type 1 diabetes who responded well to insulin pump therapy."
+
+OUTPUT:
+{
+  "decision": "exclude",
+  "reason": "wrong_study_design",
+  "confidence": "high",
+  "criteria_met": {
+    "population": false,
+    "intervention": false,
+    "study_design": false,
+    "temporal": true,
+    "language": true
+  },
+  "justification": "The study design is explicitly stated as a 'case report' [Source abstract], which is a direct exclusion criterion. Furthermore, the population is a pediatric patient with type 1 diabetes, failing the adult DM2 requirement."
+}
+
+── EJEMPLO 3: CASO DUDOSO (ESCALADO A REVISOR HUMANO) ──
+INPUT CRITERIA: 
+{"population": {"include": ["adults with type 2 diabetes"]}, "intervention": {"include": ["machine learning"]}, "study_design": {"include": ["RCT", "observational cohort"]}}
+
+INPUT ABSTRACT: 
+"A cross-sectional survey of 200 diabetes patients assessed satisfaction with telemedicine follow-up."
+
+OUTPUT:
+{
+  "decision": "uncertain",
+  "reason": null,
+  "confidence": "low",
+  "criteria_met": {
+    "population": true,
+    "intervention": false,
+    "study_design": false,
+    "temporal": true,
+    "language": true
+  },
+  "justification": "The population involves diabetes patients, but the study design is a cross-sectional survey (not an RCT or observational cohort). The intervention focuses on telemedicine rather than a predictive machine learning model [Source abstract]. This abstract requires human adjudication to determine if the intervention and design criteria are flexible."
+}

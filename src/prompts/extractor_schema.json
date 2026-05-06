@@ -1,0 +1,26 @@
+{
+  "paper_id": "",
+  "doi": "",
+  "title": "",
+  "authors": [],
+  "year": "n.d.",
+  "sample": {
+    "n": null,
+    "description": "",
+    "country": ""
+  },
+  "study_design": "",
+  "methodology": "",
+  "variables": [{"name": "<string>", "type": "independent|dependent|covariate|outcome", "measurement": "<string or null>"}],
+  "results": "",
+  "limitations": "",
+  "source_fragments": {
+    "title": null,
+    "authors": null,
+    "sample": null,
+    "study_design": null,
+    "methodology": null,
+    "results": null,
+    "limitations": null
+  }
+}

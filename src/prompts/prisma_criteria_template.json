@@ -1,0 +1,57 @@
+{
+  "review_id": "",
+  "question": "",
+  "framework": "PICOS",
+  "prisma_version": "2020",
+  "eligibility_criteria": {
+    "population": {
+      "include": [],
+      "exclude": []
+    },
+    "intervention": {
+      "include": [],
+      "exclude": []
+    },
+    "comparison": {
+      "include": [],
+      "exclude": []
+    },
+    "outcomes": {
+      "primary": [],
+      "secondary": []
+    },
+    "study_design": {
+      "include": [],
+      "exclude": []
+    },
+    "temporal": {
+      "year_min": null,
+      "year_max": null
+    },
+    "language": {
+      "accepted": [],
+      "rejected": []
+    },
+    "publication_status": {
+      "accepted": [],
+      "rejected": []
+    }
+  },
+  "screening_instructions": {
+    "phase_1": "title_abstract_only",
+    "phase_2": "full_text_required",
+    "doubtful_action": "escalate_to_second_reviewer",
+    "exclusion_reasons_required": true,
+    "exclusion_reasons_fixed_list": [
+      "wrong_population",
+      "wrong_intervention",
+      "wrong_study_design",
+      "wrong_language",
+      "wrong_year",
+      "wrong_outcomes",
+      "not_relevant",
+      "duplicate",
+      "unavailable_full_text"
+    ]
+  }
+}

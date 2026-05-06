@@ -1,0 +1,68 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# Entorno Virtual
+.env
+.venv
+venv/
+ENV/
+env.bak/
+venv.bak/
+
+# Logs y Debugging
+logs/
+*.log
+
+# Jupyter Notebooks (ignoramos el estado, mantenemos el código)
+.ipynb_checkpoints
+*/.ipynb_checkpoints/*
+
+# Datos y Vectores (¡CRÍTICO: No subir datos de entrenamiento al repo!)
+data/raw_pdfs/
+data/chroma_db/
+data/outputs/
+data/sft/
+data/clean/
+data/datasets/
+
+# Variables de Entorno (¡NUNCA SUBIR API KEYS!)
+.env
+ssh_keygen_gpu_amd.txt
+ssh_keygen_gpu_amg.txt
+axiom_final_logs.tar.gz
+axiom_smoke_test.tar.gz
+código_inicio.txt
+log_smoke_test.json
+logs_axiom.txt
+scripts_axiom_ok.tar.gz
+start_all.sh
+start_qwen7b.sh
+start_qwq32b.sh
+main.py
+hf_cache
+data
+# MacOS / Windows OS files
+.DS_Store
+Thumbs.db

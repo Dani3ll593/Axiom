@@ -10,7 +10,7 @@ logger = logging.getLogger(__name__)
 
 # Umbral de caracteres. Si un PDF produce menos que esto, asumimos que es 
 # un documento escaneado (imágenes) y no texto extraíble.
-MIN_TEXT_LENGTH = 200
+MIN_TEXT_LENGTH = 1200
 
 def parse_pdf(pdf_bytes: bytes) -> dict:
     """

@@ -40,7 +40,17 @@ PDF_DOWNLOAD_TIMEOUT_S = 30.0
 # --- Schema Definitions ---
 class VariableItem(BaseModel):
     name: str
-    type: Literal["independent", "dependent", "covariate", "outcome", "control"]
+    type: Literal[
+        "independent",   # Variable manipulada o predictora
+        "dependent",     # Variable de resultado (sinónimo de outcome en algunos campos)
+        "outcome",       # Resultado clínico primario/secundario
+        "covariate",     # Covariable ajustada en el modelo
+        "control",       # Variable de control
+        "mediator",      # Variable mediadora (explica el 'cómo' o 'por qué')
+        "moderator",     # Variable moderadora (afecta la fuerza/dirección de la relación)
+        "confounder",    # Variable de confusión identificada
+        "predictor"      # Usado en modelos de regresión no causales
+    ]
     measurement: Optional[str] = None
 
 class SampleInfo(BaseModel):
@@ -64,9 +74,9 @@ class PaperExtraction(BaseModel):
     paper_id:    Optional[str] = None
     doi:         Optional[str] = None
     title:       Optional[str] = None
-    authors:     list[str] = []
+    authors:     Optional[list[str]] = None 
     year:        int | str = "n.d."
-    sample:      SampleInfo = SampleInfo()
+    sample:      SampleInfo = SampleInfo() # Asumiendo que SampleInfo maneja sus propios opcionales
     study_design: Optional[str] = None
     methodology:  Optional[str] = None
     variables:   list[VariableItem] = [] 
@@ -76,13 +86,10 @@ class PaperExtraction(BaseModel):
     @field_validator("year", mode="before")
     @classmethod
     def validate_year(cls, v):
-        """Enforces the 'n.d.' fallback rule for missing years."""
-        if v is None:
+        if v is None or (isinstance(v, str) and not v.strip()):
             return "n.d."
-        if isinstance(v, int):
-            return v
-        if isinstance(v, str) and v.strip() == "":
-            return "n.d."
+        if isinstance(v, str) and v.isdigit():
+            return int(v)  # normalizar a int siempre que sea posible
         return v
 
 # --- LLM Client Setup ---
@@ -183,6 +190,14 @@ async def _extract_one(
             ),
             timeout=LLM_TIMEOUT_S,
         )
+
+        if extraction:
+            extraction.title = extraction.title or paper.get("title")
+            extraction.authors = extraction.authors or paper.get("authors", [])
+            extraction.doi = extraction.doi or paper.get("doi")
+            if extraction.year in (None, "n.d.") and paper.get("year"):
+                extraction.year = paper["year"]
+
     except (ValidationError, json.JSONDecodeError, asyncio.TimeoutError) as e:
         logger.error(
             f"Extraction parsing/timeout failed: {type(e).__name__}",

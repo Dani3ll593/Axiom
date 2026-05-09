@@ -62,15 +62,15 @@ EXTRACTION_PROMPT: str  = _read_text("extraction_prompt.txt")
 EXTRACTOR_SCHEMA:  dict = _read_json("extractor_schema.json")
 
 # Agentes 4a / 4b — Analysts (dual)
-#ANALYST_PROMPT_7B:  str = _read_text("analyst_prompt_7b.txt")
-#ANALYST_PROMPT_32B: str = _read_text("analyst_prompt_32b.txt")
+ANALYST_PROMPT_7B:  str = _read_text("analyst_prompt_7b.txt")
+ANALYST_PROMPT_32B: str = _read_text("analyst_prompt_32b.txt")
 
 # Agente 5 — Gap Finder
-#GAPFINDER_PROMPT: str = _read_text("gapfinder_prompt.txt")
+GAPFINDER_PROMPT: str = _read_text("gapfinder_prompt.txt")
 
 # Agente 6 — Writer
-#WRITER_PROMPT:     str = _read_text("writer_prompt.txt")
-#WRITER_APA7_RULES: str = _read_text("writer_apa7_rules.txt")
+WRITER_PROMPT:     str = _read_text("writer_prompt.txt")
+WRITER_APA7_RULES: str = _read_text("writer_apa7_rules.txt")
 
 # UI helper — default PRISMA criteria offered to the user in Streamlit
 PRISMA_CRITERIA_TEMPLATE: dict = _read_json("prisma_criteria_template.json")
@@ -82,10 +82,10 @@ __all__ = [
     "SCREENER_FEWSHOT",
     "EXTRACTION_PROMPT",
     "EXTRACTOR_SCHEMA",
-    #"ANALYST_PROMPT_7B",
-    #"ANALYST_PROMPT_32B",
-    #"GAPFINDER_PROMPT",
-    #"WRITER_PROMPT",
-    #"WRITER_APA7_RULES",
+    "ANALYST_PROMPT_7B",
+    "ANALYST_PROMPT_32B",
+    "GAPFINDER_PROMPT",
+    "WRITER_PROMPT",
+    "WRITER_APA7_RULES",
     "PRISMA_CRITERIA_TEMPLATE",
 ]

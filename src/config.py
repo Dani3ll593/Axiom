@@ -23,6 +23,20 @@ class Settings(BaseSettings):
     # ─── Rutas del Sistema ───
     chroma_persist_dir: str = "./data/chroma_db"
 
+ # ─── Clusterer (BGE-M3 + AgglomerativeClustering) ───
+    # Métrica coseno: threshold=distancia, NO similitud.
+    #   0.30-0.40 → near-duplicates (muy estricto, muchos singletons)
+    #   0.50      → mismo subtopic (default sensato para BGE-M3)
+    #   0.60-0.70 → mismo dominio general (laxo, clusters grandes)
+    cluster_distance_threshold: float = 0.7
+
+    # Cota dura sobre el JSON serializado del cluster que se manda al analyst.
+    # El 7B es el más estricto: ctx=8192 − max_tokens(2048) − system_prompt(~1400)
+    # − margen(~300) ≈ 4500 tokens ≈ 16K chars. Si el JSON pruned excede esto,
+    # el clusterer parte el cluster en sub-clusters consecutivos. Evita overflow
+    # de context window aunque el threshold semántico produzca clusters densos.
+    analyst_max_user_chars: int = 16000
+
     # ─── UI y Streamlit ───
     streamlit_server_port: int = 8501
 

@@ -8,24 +8,13 @@ from src.state import AxiomState
 from src.agents.searcher import run_searcher
 from src.agents.screener import screener_node
 from src.agents.extractor import run_extractor
+from src.tools.clusterer import clusterer_node
+from src.agents.analyst_7b import analyst_7b_node
+from src.agents.analyst_32b import analyst_32b_node
+from src.tools.reconciler import reconciler_node
+from src.agents.gap_finder import run_gap_finder
+from src.agents.writer import run_writer
 
-# ==============================================================================
-# NODOS DUMMY (Stubs) - Pendientes de desarrollar en el futuro
-# ==============================================================================
-async def analyst_7b_node(state: AxiomState) -> dict:
-    return {"synthesis_7b": []}
-
-async def analyst_32b_node(state: AxiomState) -> dict:
-    return {"synthesis_32b": []}
-
-async def reconciler_node(state: AxiomState) -> dict:
-    return {"consensus_clusters": []}
-
-async def gapfinder_node(state: AxiomState) -> dict:
-    return {"research_gaps": []}
-
-async def writer_node(state: AxiomState) -> dict:
-    return {"executive_report_md": "# Reporte Final\nEn construcción..."}
 
 # ==============================================================================
 # LÓGICA DE CONDICIONES (Ruteo Dinámico)
@@ -43,14 +32,15 @@ def build_axiom_graph():
     builder = StateGraph(AxiomState)
 
     # 1. Agregar Nodos
-    builder.add_node("searcher", run_searcher)    # <-- Nuevo!
+    builder.add_node("searcher", run_searcher)    
     builder.add_node("screener", screener_node)
-    builder.add_node("extractor", run_extractor)  # <-- Reemplazado por el real
+    builder.add_node("extractor", run_extractor)
+    builder.add_node("clusterer", clusterer_node) 
     builder.add_node("analyst_7b", analyst_7b_node)
     builder.add_node("analyst_32b", analyst_32b_node)
     builder.add_node("reconciler", reconciler_node)
-    builder.add_node("gapfinder", gapfinder_node)
-    builder.add_node("writer", writer_node)
+    builder.add_node("gapfinder", run_gap_finder)
+    builder.add_node("writer", run_writer)
 
     # 2. Definir Aristas (Flujo)
     builder.add_edge(START, "searcher")           # Empezamos en el Searcher
@@ -59,8 +49,12 @@ def build_axiom_graph():
     # Condicional post-screening (Salta al final si no hay papers)
     builder.add_conditional_edges("screener", check_screening_results)
     
-    builder.add_edge("extractor", "analyst_7b")
-    builder.add_edge("extractor", "analyst_32b")
+    # Extractor entrega resultados al clusterer
+    builder.add_edge("extractor", "clusterer")
+    
+    # Fan-out: El clusterer alimenta en paralelo a ambos analistas    
+    builder.add_edge("clusterer", "analyst_7b")
+    builder.add_edge("clusterer", "analyst_32b")
     
     # FAN-IN: El reconciliador necesita que AMBOS analistas terminen
     builder.add_edge("analyst_7b", "reconciler")

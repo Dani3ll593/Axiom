@@ -4,9 +4,11 @@ Enrutador central de LLMs (vLLM / AMD MI300X).
 Gestiona los clientes asíncronos para evitar bloquear el event loop de LangGraph
 y provee utilidades para limpiar las respuestas con cadenas de razonamiento (<think>).
 """
-import re
+import ast
 import json
 import logging
+import re
+
 from openai import AsyncOpenAI
 
 from src.config import settings
@@ -29,27 +31,120 @@ LLM_32B = AsyncOpenAI(
     timeout=300.0,
 )
 
+
 # --- 2. Utilidades de Parseo ---
+def _extract_balanced_json(text: str) -> str | None:
+    """Encuentra el primer `{` y devuelve el substring hasta la `}` que lo cierra,
+    contando llaves balanceadas y respetando strings (no cuenta `{` dentro de comillas).
+    Devuelve None si no encuentra un objeto bien cerrado.
+    """
+    start = text.find("{")
+    if start == -1:
+        return None
+    depth = 0
+    in_string = False
+    escape = False
+    for i in range(start, len(text)):
+        c = text[i]
+        if escape:
+            escape = False
+            continue
+        if c == "\\":
+            escape = True
+            continue
+        if c == '"':
+            in_string = not in_string
+            continue
+        if in_string:
+            continue
+        if c == "{":
+            depth += 1
+        elif c == "}":
+            depth -= 1
+            if depth == 0:
+                return text[start : i + 1]
+    return None
+
+
+def _sanitize_json_block(s: str) -> str:
+    """Limpia ruido común en outputs de LLM antes de json.loads."""
+    s = s.replace("\xa0", " ").replace("\t", " ")
+    s = re.sub(r"//.*", "", s)                        # // comentarios línea
+    s = re.sub(r"/\*.*?\*/", "", s, flags=re.DOTALL)  # /* */ comentarios bloque
+    s = re.sub(r",\s*([}\]])", r"\1", s)              # trailing commas
+    return s.strip()
+
+
 def extract_json_from_response(raw: str) -> dict:
+    """Extrae JSON de la respuesta del LLM, robusto a múltiples formatos:
+
+    - `<json>...</json>` (preferido si el prompt lo pide)
+    - ```` ```json ... ``` ```` o ```` ``` ... ``` ```` (markdown fence)
+    - `{...}` en texto libre (búsqueda de llaves balanceadas)
+
+    Los bloques `<think>...</think>` de QwQ-32B se descartan antes de buscar.
+    Si encuentra un candidato pero `json.loads` falla, intenta `ast.literal_eval`
+    como rescate (cubre comillas simples y otros casos cuasi-Python).
+
+    NOTE: el screener tiene una función equivalente `limpiar_respuesta_qwq` con
+    heurísticas un poco distintas. A futuro convendría unificarlas.
+
+    Raises:
+        ValueError: si raw está vacío.
+        json.JSONDecodeError: si no se logra extraer JSON válido. El mensaje
+            incluye un preview de los primeros 500 chars de la respuesta cruda
+            para diagnosticar qué devolvió el modelo.
     """
-    Extrae JSON de las respuestas del LLM, ignorando los bloques <think>
-    que genera QwQ-32B de forma nativa[cite: 6].
-    """
-    if not raw:
+    if not raw or not raw.strip():
         raise ValueError("Received empty response from LLM")
 
-    # Descarta el bloque <think>...</think> y captura el contenido real[cite: 6]
-    cleaned = re.sub(r"<think>.*?</think>", "", raw, flags=re.DOTALL).strip()
-    
-    # Por si el modelo añade las clásicas vallas de markdown ```json ... ```
-    cleaned = re.sub(r"^```(?:json)?\n?", "", cleaned).rstrip("`").strip()
-    
-    try:
-        return json.loads(cleaned)
-    except json.JSONDecodeError as e:
-        logger.error(f"Error decodificando JSON tras limpiar <think>: {e}")
-        logger.debug(f"Raw string: {raw}")
-        raise
+    # 1. Quitar bloques <think>...</think> (incluso múltiples). Si hay <think>
+    #    sin cerrar, sobrevive en el texto y caerá en error con preview claro.
+    text = re.sub(r"<think>.*?</think>", "", raw, flags=re.DOTALL)
+
+    # 2. Reunir candidatos en orden de preferencia.
+    candidates: list[str] = []
+
+    m = re.search(r"<json>\s*(\{.*?\})\s*</json>", text, re.DOTALL | re.IGNORECASE)
+    if m:
+        candidates.append(m.group(1))
+
+    m = re.search(r"```(?:json)?\s*(\{.*?\})\s*```", text, re.DOTALL | re.IGNORECASE)
+    if m:
+        candidates.append(m.group(1))
+
+    balanced = _extract_balanced_json(text)
+    if balanced:
+        candidates.append(balanced)
+
+    # 3. Probar cada candidato con sanitización + parser principal + rescate AST.
+    for c in candidates:
+        cleaned = _sanitize_json_block(c)
+        try:
+            return json.loads(cleaned)
+        except json.JSONDecodeError:
+            try:
+                py_compat = (
+                    cleaned.replace("true", "True")
+                           .replace("false", "False")
+                           .replace("null", "None")
+                )
+                parsed = ast.literal_eval(py_compat)
+                if isinstance(parsed, dict):
+                    return parsed
+            except Exception:
+                continue
+
+    # 4. Todo falló: error con preview para diagnosticar.
+    preview = raw[:500].replace("\n", " ")
+    logger.error(
+        f"extract_json_from_response: no parseable JSON encontrado. "
+        f"Raw preview (500 chars): {preview!r}"
+    )
+    raise json.JSONDecodeError(
+        f"No se pudo extraer JSON válido. Raw preview: {preview!r}",
+        raw, 0,
+    )
 
 
 # --- 3. Enrutador Principal ---

@@ -63,6 +63,7 @@ start_qwq32b.sh
 main.py
 hf_cache
 data
+test
 # MacOS / Windows OS files
 .DS_Store
 Thumbs.db

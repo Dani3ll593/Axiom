@@ -26,6 +26,9 @@ class AxiomState(TypedDict, total=False):
     
     # Output del Agente 3 (Extractor)
     extractions: Annotated[list[dict], operator.add]
+
+    # Output del Clusterer (Escritura atómica, antes de los analistas)
+    clusters: list[list[dict]]  # Escritura atómica del clusterer
     
     # ─── Agentes Analistas (4a y 4b) en Paralelo ───
     synthesis_7b: Annotated[list[dict], operator.add]
@@ -39,3 +42,4 @@ class AxiomState(TypedDict, total=False):
     
     # ─── Agente 6: Writer ───
     executive_report_md: str
+    apa7_literature_review: str

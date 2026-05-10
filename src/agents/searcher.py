@@ -25,6 +25,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import os
 import xml.etree.ElementTree as ET
 from typing import Literal
 from urllib.parse import quote_plus
@@ -46,7 +47,22 @@ logger = logging.getLogger(__name__)
 LLM_TIMEOUT_S = 120.0
 SCIELO_TIMEOUT_S = 20.0          # Scielo p50 ~4.2s, dejar margen
 DEFAULT_HTTP_TIMEOUT_S = 30.0
-MAX_RESULTS_PER_API = 50         # Por API; total ≤ 250 papers antes de dedup
+
+# Cap por API. Default 50 para demos/main.py rápidos. Si EVAL_MODE=1 se sube
+# a 200 para evaluación contra gold standards (recall PRISMA real).
+# Override manual via AXIOM_MAX_RESULTS_PER_API env var (toma precedencia).
+def _resolve_max_results_per_api() -> int:
+    explicit = os.environ.get("AXIOM_MAX_RESULTS_PER_API")
+    if explicit and explicit.isdigit():
+        return int(explicit)
+    if os.environ.get("EVAL_MODE") in ("1", "true", "True"):
+        return 200
+    return 50
+
+MAX_RESULTS_PER_API = _resolve_max_results_per_api()
+logger.info("searcher: MAX_RESULTS_PER_API = %d (EVAL_MODE=%s)",
+            MAX_RESULTS_PER_API, os.environ.get("EVAL_MODE", "0"))
+
 ACCESS_CHECK_CONCURRENCY = 16    # Para no saturar Unpaywall/OpenAlex/Crossref
 
 # Rate limits por API (req/seg sostenidos)
@@ -115,34 +131,81 @@ def _get_llm_client():
 
 
 # --- Step 1: Decomposition ---
+# Sampling profiles: el primero es determinista (default histórico).
+# El segundo se usa SOLO si el primero cae en degenerate generation —
+# rompe los loops de "\n\n\n" del 7B que vimos en TEST_001 (max_tokens hit
+# imprimiendo whitespace). Subir frequency_penalty y temperature, más stops
+# duros, fuerza al modelo a salir del loop.
+_DECOMP_PROFILE_DEFAULT = {
+    "temperature": 0.3,
+    "presence_penalty": 0.0,
+    "frequency_penalty": 0.0,
+    "max_tokens": 1024,
+}
+_DECOMP_PROFILE_RESCUE = {
+    "temperature": 0.7,
+    "presence_penalty": 0.5,
+    "frequency_penalty": 1.0,
+    "max_tokens": 1500,
+    "stop": ["\n\n\n"],   # corta loops de whitespace antes de agotar tokens
+}
+
+
 async def _decompose_query(question: str, prisma: dict) -> SearchDecomposition | None:
-    """Pide al 7B una descomposición a 5 queries. None si falla."""
+    """Pide al 7B una descomposición a 5 queries. None si falla.
+
+    Estrategia: primer intento determinista; si el modelo cae en degenerate
+    generation (IncompleteOutputException), reintenta con un perfil de rescate
+    (temperatura más alta, frequency_penalty alto, stop tokens). Esto cubre el
+    bug de TEST_001 donde el 7B se atascaba imprimiendo "\\n\\n\\n" hasta
+    agotar max_tokens.
+    """
     client = _get_llm_client()
     user_msg = f"research_question: {question}\nprisma_criteria: {prisma}"
 
-    try:
-        return await asyncio.wait_for(
-            client.chat.completions.create(
-                model=settings.model_7b_name,
-                response_model=SearchDecomposition,
-                messages=[
-                    {"role": "system", "content": SEARCHER_PROMPT},
-                    {"role": "user",   "content": user_msg},
-                ],
-                max_retries=2,
-                presence_penalty=0.0,
-                frequency_penalty=0.0,
-                temperature=0.3,
-                max_tokens=1024,
-            ),
-            timeout=LLM_TIMEOUT_S,
-        )
-    except (ValidationError, asyncio.TimeoutError):
-        logger.error("searcher: decomposition timeout/validation", extra={"node": "searcher"})
-        return None
-    except Exception:
-        logger.exception("searcher: decomposition failed", extra={"node": "searcher"})
-        return None
+    last_err: Exception | None = None
+    for attempt, profile in enumerate(
+        (_DECOMP_PROFILE_DEFAULT, _DECOMP_PROFILE_RESCUE), start=1
+    ):
+        try:
+            return await asyncio.wait_for(
+                client.chat.completions.create(
+                    model=settings.model_7b_name,
+                    response_model=SearchDecomposition,
+                    messages=[
+                        {"role": "system", "content": SEARCHER_PROMPT},
+                        {"role": "user",   "content": user_msg},
+                    ],
+                    max_retries=2,
+                    **profile,
+                ),
+                timeout=LLM_TIMEOUT_S,
+            )
+        except (ValidationError, asyncio.TimeoutError) as e:
+            logger.error(
+                "searcher: decomposition timeout/validation (attempt %d)",
+                attempt, extra={"node": "searcher"},
+            )
+            last_err = e
+            # validation/timeout no se beneficia del rescue → cortar
+            return None
+        except Exception as e:
+            # Captura InstructorRetryException con IncompleteOutputException dentro.
+            # En el primer intento, reintentamos con perfil de rescate.
+            last_err = e
+            if attempt == 1:
+                logger.warning(
+                    "searcher: decomposition attempt 1 failed (%s); "
+                    "retrying with rescue profile (higher temp + stops).",
+                    type(e).__name__,
+                )
+                continue
+            logger.exception(
+                "searcher: decomposition failed after rescue retry",
+                extra={"node": "searcher"},
+            )
+            return None
+    return None
 
 
 # --- Step 2: Per-API fetchers ---

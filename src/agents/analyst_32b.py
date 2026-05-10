@@ -13,7 +13,7 @@ logger = logging.getLogger(__name__)
 
 # --- Tunables ---
 MAX_CONCURRENT_CLUSTERS = 2   # más bajo: VRAM del 32B
-TIMEOUT_S = 300.0             # margen amplio para razonamiento <think>
+TIMEOUT_S = 600.0             # extendido: clusters grandes con QwQ tardan >5min en razonar
 
 
 def _prune_extraction(paper: dict) -> dict:

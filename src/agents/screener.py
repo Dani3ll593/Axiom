@@ -281,14 +281,14 @@ async def _cascade_screen(
     )
     if second is None:
         logger.warning(
-            "screener: 32b failed, keeping 7b verdict",
+            "screener: 32b failed, keeping 7b veredict",
             extra={"paper_id": paper.get("paper_id"), "node": "screener"},
         )
         return first, "7b_fallback"
     
     # --- MENSAJE DE ÉXITO DEL 32B ---
     logger.info(
-        f"screener: 32B tomó la decisión final con éxito para el paper {paper.get('paper_id')}",
+        f"screener: 32B took the final decision succesfully for the paper {paper.get('paper_id')}",
         extra={"paper_id": paper.get("paper_id"), "node": "screener"},
     )
     # --------------------------------

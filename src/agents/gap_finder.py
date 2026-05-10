@@ -18,6 +18,18 @@ logger = logging.getLogger(__name__)
 TIMEOUT_S = 300.0
 OPENALEX_TIMEOUT_S = 15.0
 
+# OpenAlex hit thresholds. Calibrados para keywords genéricos típicos del LLM
+# (p. ej. "pediatric children" devuelve >100k hits → no es vacío real).
+# Con queries de 3-5 términos, <50 indica laguna confirmada, <500 indica
+# literatura emergente.
+OA_CONFIRMED_MAX = 50
+OA_PARTIAL_MAX   = 500
+
+# Si los 5 gaps caen como `rejected`, rescatamos los N con menos hits
+# como `partially_addressed` para que el reporte PRISMA Item 23d nunca
+# salga vacío. Decisión de diseño: preferimos gaps débiles a no tener gaps.
+RESCUE_TOP_N = 2
+
 # --- Esquemas (espejo de gapfinder_prompt.txt § FORMAT) ---
 class ProposedGap(BaseModel):
     description: str
@@ -32,6 +44,45 @@ class GapFinderOutput(BaseModel):
     comparison_gap:     ProposedGap
     temporal_gap:       ProposedGap
     unanswered_question: ProposedGap
+
+
+# --- Llamada al LLM con un reintento ---
+async def _call_qwq_with_retry(user_msg: str) -> GapFinderOutput:
+    """Llama a QwQ y, si la respuesta no parsea o no valida, reintenta una vez.
+
+    QwQ-32B es errático: a veces devuelve prosa narrativa en vez de JSON
+    (TEST_001), o un JSON con categorías faltantes (TEST_003). Un solo
+    reintento suele bastar — la varianza del modelo es alta entre llamadas
+    aunque el prompt sea idéntico.
+    """
+    last_err: Exception | None = None
+    for attempt in (1, 2):
+        try:
+            response = await asyncio.wait_for(
+                LLM_32B.chat.completions.create(
+                    model=settings.model_32b_name,
+                    messages=[
+                        {"role": "system", "content": GAPFINDER_PROMPT},
+                        {"role": "user",   "content": user_msg},
+                    ],
+                    temperature=0.4,
+                    max_tokens=4096,
+                ),
+                timeout=TIMEOUT_S,
+            )
+            raw_text = response.choices[0].message.content
+            parsed_json = extract_json_from_response(raw_text)
+            return GapFinderOutput(**parsed_json)
+        except (json.JSONDecodeError, ValidationError, ValueError) as e:
+            last_err = e
+            if attempt == 1:
+                logger.warning(
+                    "gapfinder: intento %d falló (%s); reintentando.",
+                    attempt, type(e).__name__,
+                )
+            continue
+    # Ambos intentos fallaron — propagar el último error
+    raise last_err  # type: ignore[misc]
 
 
 # --- Verificación en OpenAlex ---
@@ -58,10 +109,10 @@ async def _verify_gap_in_openalex(category: str, gap: ProposedGap) -> dict:
             r.raise_for_status()
             count = r.json().get("meta", {}).get("count", 0)
 
-        if count < 10:
+        if count < OA_CONFIRMED_MAX:
             status = "confirmed"
             confidence = "High (No significant literature found)"
-        elif count < 100:
+        elif count < OA_PARTIAL_MAX:
             status = "partially_addressed"
             confidence = "Medium (Emerging literature exists)"
         else:
@@ -85,6 +136,44 @@ async def _verify_gap_in_openalex(category: str, gap: ProposedGap) -> dict:
         }
 
 
+def _rescue_gaps_if_all_rejected(verified_gaps: list[dict]) -> list[dict]:
+    """Si los 5 gaps cayeron `rejected`, rescata los N con menos hits.
+
+    Preferimos un reporte con gaps débiles a un reporte sin gaps.
+    Si algunos `rejected` no tienen `openalex_hits` (API falló), no rescatamos
+    esos — solo los que tienen un count numérico.
+    """
+    statuses = {g["verification_status"] for g in verified_gaps}
+    if statuses != {"rejected"}:
+        return verified_gaps  # Hay al menos un confirmed/partial → no rescate
+
+    rescuable = [g for g in verified_gaps if g.get("openalex_hits") is not None]
+    if not rescuable:
+        return verified_gaps  # No podemos ordenar sin hits → respetar el rechazo
+
+    # Top N con menos hits: los más probables de ser un vacío real
+    rescuable.sort(key=lambda g: g["openalex_hits"])
+    rescued_ids = {id(g) for g in rescuable[:RESCUE_TOP_N]}
+
+    out = []
+    for g in verified_gaps:
+        if id(g) in rescued_ids:
+            new = dict(g)
+            new["verification_status"] = "partially_addressed"
+            new["confidence"] = (
+                f"Rescued (Lowest hit count among rejected gaps: {g['openalex_hits']})"
+            )
+            out.append(new)
+        else:
+            out.append(g)
+
+    logger.info(
+        "gapfinder: los 5 gaps fueron rejected. Rescatados %d con menor hit count.",
+        len(rescued_ids),
+    )
+    return out
+
+
 # --- LangGraph Node ---
 async def run_gap_finder(state: AxiomState) -> dict:
     """Analiza consensos, propone 5 gaps por categoría y los verifica."""
@@ -106,31 +195,15 @@ async def run_gap_finder(state: AxiomState) -> dict:
     ]
     user_msg = f"CONSENSUS SUMMARY:\n{json.dumps(summary, ensure_ascii=False)}"
 
-    # 1. Inferencia con QwQ-32B
+    # 1. Inferencia con QwQ-32B (con un reintento ante variabilidad del modelo)
     try:
         logger.info("gapfinder: Solicitando propuesta de gaps al QwQ-32B...")
-        response = await asyncio.wait_for(
-            LLM_32B.chat.completions.create(
-                model=settings.model_32b_name,
-                messages=[
-                    {"role": "system", "content": GAPFINDER_PROMPT},
-                    {"role": "user",   "content": user_msg},
-                ],
-                temperature=0.4,
-                max_tokens=4096,
-            ),
-            timeout=TIMEOUT_S,
-        )
-
-        raw_text = response.choices[0].message.content
-        parsed_json = extract_json_from_response(raw_text)
-        validated = GapFinderOutput(**parsed_json)
-
+        validated = await _call_qwq_with_retry(user_msg)
     except ValidationError as e:
-        logger.error("gapfinder: Pydantic validation error: %s", e)
+        logger.error("gapfinder: Pydantic validation error tras reintento: %s", e)
         return {"research_gaps": [], "errors": [{"node": "gapfinder", "error": f"validation_error: {e}"}]}
     except Exception as e:
-        logger.exception("gapfinder: LLM call failed")
+        logger.exception("gapfinder: LLM call failed tras reintento")
         return {"research_gaps": [], "errors": [{"node": "gapfinder", "error": str(e)}]}
 
     # 2. Mapear las 5 categorías a (category_label, ProposedGap)
@@ -149,7 +222,10 @@ async def run_gap_finder(state: AxiomState) -> dict:
         *(_verify_gap_in_openalex(cat, gap) for cat, gap in gaps_to_verify)
     )
 
-    # 4. Filtrar rechazados (literatura abundante → no es vacío real)
+    # 4. Rescate: si los 5 cayeron rejected, recuperar los más débiles
+    verified_gaps = _rescue_gaps_if_all_rejected(list(verified_gaps))
+
+    # 5. Filtrar rechazados (literatura abundante → no es vacío real)
     final_gaps = [g for g in verified_gaps if g["verification_status"] != "rejected"]
 
     logger.info(

@@ -1,10 +1,14 @@
 # ============================================================================
-# AXIOM — requirements.txt (Versión POST-DEBUG 2026-05-05)
+# AXIOM — requirements.txt (Inference-only, post-PDF integration)
 # ----------------------------------------------------------------------------
+# Para correr el pipeline (NO incluye fine-tuning con Unsloth/TRL/PEFT).
 # Optimizado para hardware AMD (ROCm 6.2+) y GPUs MI300X.
+#
+# Si en el futuro hace falta fine-tuning, mover esos paquetes a un
+# `requirements-train.txt` separado e instalar a demanda.
 # ============================================================================
 
-# --- Core LLM Stack (Versiones Validadas) ----------------------------------
+# --- Core LLM Stack (Versiones Validadas) ---------------------------------
 transformers==4.57.1
 tokenizers>=0.22.2,<0.23
 huggingface-hub==0.36.2
@@ -16,47 +20,56 @@ langchain-core>=0.3.0
 pydantic>=2.10.0
 pydantic-settings>=2.4.0
 
-# --- Cliente vLLM y Generación Restringida ---------------------------------
+# --- Cliente vLLM y Generación Restringida --------------------------------
 openai>=1.40.0
 instructor>=1.5.0
 outlines>=0.0.46
 outlines-core>=0.2.14
 
-# --- Embeddings y Vector Store ---------------------------------------------
+# --- Embeddings y Vector Store --------------------------------------------
 FlagEmbedding>=1.2.10
 chromadb>=0.5.0
 sentence-transformers>=3.0.0
 numpy>=2.0,<2.3
 
-# --- Fine-tuning con LoRA (Unsloth) ----------------------------------------
-# ATENCIÓN: No descomentar unsloth aquí para evitar que instale CUDA.
-# Instalar manualmente en el contenedor con:
-# pip install "unsloth[rocm] @ git+https://github.com/unslothai/unsloth.git"
-# unsloth>=2026.4
-trl>=0.10.1
-peft>=0.12.0
-datasets>=4.3.0
-accelerate>=0.33.0
-
-# --- Parsing y APIs Científicas --------------------------------------------
+# --- Parsing y APIs Científicas -------------------------------------------
 pymupdf>=1.24.0
 pymed>=0.8.9
 arxiv>=2.1.0
 httpx>=0.27.0
+httpx-sse>=0.4.0          # SSE streaming para axiom_api.py
 aiohttp>=3.10.0
 tenacity>=8.5.0
 
-# --- UI y Reportes ---------------------------------------------------------
-# Anclado a 1.36.0 para evitar colisión con blinker 1.4 de distutils
-streamlit==1.36.0
-altair>=4.0
-gitpython>=3.0.7
-pydeck>=0.8.0b4
-toml>=0.10.2
-itsdangerous>=2.0.0
+# --- API HTTP wrapper (axiom_api.py) --------------------------------------
+fastapi>=0.110.0
+uvicorn[standard]>=0.27.0
+
+# --- Reportes (PDF generation desde Markdown en writer.py) ----------------
+markdown>=3.6
 weasyprint>=62.0
+
+# --- Utilidades -----------------------------------------------------------
+python-dotenv>=1.0.1
 structlog>=24.4.0
 
-# --- Utilidades ------------------------------------------------------------
-hf_transfer>=0.1.8
-python-dotenv>=1.0.1
+# ============================================================================
+# Dependencias de SISTEMA requeridas por WeasyPrint (instalar via apt en el
+# droplet, NO con pip):
+#
+#   sudo apt-get update && sudo apt-get install -y \
+#   libpango-1.0-0 \
+#   libpangocairo-1.0-0 \
+#   libcairo2 \
+#   libgdk-pixbuf2.0-0 \
+#   shared-mime-info
+
+#   apt-get update && apt-get install -y \
+#   libpango-1.0-0 \
+#   libpangocairo-1.0-0 \
+#   libcairo2 \
+#   libgdk-pixbuf2.0-0 \
+#   shared-mime-info
+#
+# Sin estas libs, weasyprint importa pero falla al renderizar.
+# ============================================================================

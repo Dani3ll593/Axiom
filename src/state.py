@@ -43,3 +43,5 @@ class AxiomState(TypedDict, total=False):
     # ─── Agente 6: Writer ───
     executive_report_md: str
     apa7_literature_review: str
+    executive_report_pdf_path: str | None
+    apa7_pdf_path: str | None

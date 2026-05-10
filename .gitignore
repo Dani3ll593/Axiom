@@ -64,6 +64,9 @@ main.py
 hf_cache
 data
 test
+test.py
+ngrok
+ngrok-v3-stable-linux-amd64.tgz
 # MacOS / Windows OS files
 .DS_Store
 Thumbs.db

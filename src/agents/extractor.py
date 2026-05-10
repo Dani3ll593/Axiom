@@ -49,7 +49,9 @@ class VariableItem(BaseModel):
         "mediator",      # Variable mediadora (explica el 'cómo' o 'por qué')
         "moderator",     # Variable moderadora (afecta la fuerza/dirección de la relación)
         "confounder",    # Variable de confusión identificada
-        "predictor"      # Usado en modelos de regresión no causales
+        "predictor",     # Usado en modelos de regresión no causales
+        "demographic",
+        "other"      
     ]
     measurement: Optional[str] = None
 
@@ -79,7 +81,7 @@ class PaperExtraction(BaseModel):
     sample:      SampleInfo = SampleInfo() # Asumiendo que SampleInfo maneja sus propios opcionales
     study_design: Optional[str] = None
     methodology:  Optional[str] = None
-    variables:   list[VariableItem] = [] 
+    variables:   Optional[list[VariableItem]] = [] 
     results:     Optional[str] = None
     limitations: Optional[str] = None
 
